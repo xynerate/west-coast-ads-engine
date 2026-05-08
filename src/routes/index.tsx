@@ -65,10 +65,104 @@ function AdCard({ ad, index }: { ad: Ad; index: number }) {
   };
   const download = async () => {
     if (!ad.imageUrl) return;
-    const a = document.createElement("a");
-    a.href = ad.imageUrl;
-    a.download = `wcc-ad-${index + 1}.png`;
-    a.click();
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = ad.imageUrl;
+      await new Promise((res, rej) => {
+        img.onload = () => res(null);
+        img.onerror = rej;
+      });
+
+      const W = 1080;
+      const imgH = W; // square image
+      const pad = 48;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      // height set after measuring text
+      const ctx = canvas.getContext("2d")!;
+
+      const wrap = (text: string, maxWidth: number, font: string) => {
+        ctx.font = font;
+        const lines: string[] = [];
+        for (const para of text.split("\n")) {
+          const words = para.split(/\s+/);
+          let line = "";
+          for (const w of words) {
+            const test = line ? line + " " + w : w;
+            if (ctx.measureText(test).width > maxWidth && line) {
+              lines.push(line);
+              line = w;
+            } else {
+              line = test;
+            }
+          }
+          if (line) lines.push(line);
+        }
+        return lines;
+      };
+
+      const headlineFont = "bold 44px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      const bodyFont = "28px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      const ctaFont = "bold 30px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      const tagFont = "italic 24px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+
+      const maxW = W - pad * 2;
+      const headlineLines = wrap(ad.headline, maxW, headlineFont);
+      const bodyLines = wrap(ad.body, maxW, bodyFont);
+      const ctaLines = wrap(ad.cta, maxW, ctaFont);
+      const tagLines = wrap(ad.hashtags, maxW, tagFont);
+
+      const lh = { h: 54, b: 38, c: 40, t: 32 };
+      const gap = 24;
+      const textH =
+        pad +
+        headlineLines.length * lh.h +
+        gap +
+        bodyLines.length * lh.b +
+        gap +
+        ctaLines.length * lh.c +
+        gap +
+        tagLines.length * lh.t +
+        pad;
+
+      canvas.height = imgH + textH;
+
+      // background
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // image
+      ctx.drawImage(img, 0, 0, W, imgH);
+
+      // text block
+      let y = imgH + pad;
+      const drawLines = (lines: string[], font: string, color: string, lineH: number) => {
+        ctx.font = font;
+        ctx.fillStyle = color;
+        ctx.textBaseline = "top";
+        for (const line of lines) {
+          ctx.fillText(line, pad, y);
+          y += lineH;
+        }
+      };
+
+      drawLines(headlineLines, headlineFont, "#d6336c", lh.h);
+      y += gap;
+      drawLines(bodyLines, bodyFont, "#222222", lh.b);
+      y += gap;
+      drawLines(ctaLines, ctaFont, "#0d6efd", lh.c);
+      y += gap;
+      drawLines(tagLines, tagFont, "#6c757d", lh.t);
+
+      const url = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `wcc-ad-${index + 1}.png`;
+      a.click();
+    } catch (e) {
+      toast.error("Could not build composite image (image may be CORS-blocked).");
+    }
   };
   return (
     <Card className="overflow-hidden border-0 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-elegant)] transition-all hover:-translate-y-1">
