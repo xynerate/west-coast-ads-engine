@@ -108,24 +108,29 @@ interface AdConcept {
   phone: string;
 }
 
-async function generateAdCopy(count: number, theme?: string): Promise<AdConcept[]> {
+async function generateAdCopy(count: number, theme?: string, serviceKeys?: string[]): Promise<AdConcept[]> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
   const context = buildContext(theme);
+
+  const activeServices = (serviceKeys && serviceKeys.length)
+    ? SERVICES.filter((s) => serviceKeys.includes(s.key))
+    : SERVICES;
+  const allowedKeys = activeServices.map((s) => s.key).join(" | ");
 
   const prompt = `You are a Facebook group marketing copywriter for "West Coast Cleaners" — a friendly, local home & rug cleaning company on the West Coast of Cape Town, South Africa (Blouberg area).
 
 TIMING & SEASONAL CONTEXT (use this to make ads feel timely and relevant):
 ${context}
 
-Their services: ${SERVICES.map((s) => `${s.name} (${s.perk}, call ${s.phone})`).join("; ")}.
+Their services (ONLY use these — do not invent others): ${activeServices.map((s) => `${s.name} [key: ${s.key}] (${s.perk}, call ${s.phone})`).join("; ")}.
 
 Tone: warm, neighbourly, locally proud, casual South African. NOT salesy. Feels like a community recommendation, not a corporate ad. Use light emojis sparingly (1-2 per ad). Tie copy AND imagery to the seasonal/holiday context above where it feels natural — never forced.
 
-Generate ${count} DIFFERENT short, catchy Facebook group ads. Each should target one of the services and feel native to local community groups (Blouberg, Table View, Melkbosstrand, Parklands, West Coast Moms etc). Vary services across the batch.
+Generate ${count} DIFFERENT short, catchy Facebook group ads. Each ad MUST target ONE of the allowed services listed above and feel native to local community groups (Blouberg, Table View, Melkbosstrand, Parklands, West Coast Moms etc). Vary across the allowed services as evenly as possible.
 
-Return strict JSON: { "ads": [{ "service": "<one of: loose-rug | fitted-carpet | upholstery | mattress | home | office>", "occasion": "short label of the seasonal/holiday hook used (e.g. 'Christmas', 'Winter', 'Mother's Day') or 'Evergreen'", "headline": "punchy 4-8 word hook", "body": "2-3 sentence post body that ties to the occasion when relevant", "cta": "short call to action sentence including the phone number", "hashtags": "3-5 relevant hashtags space separated", "imagePrompt": "detailed visual prompt for an eye-catching square ad image (no text in image), South African home context, bright clean aesthetic, reflecting the season/occasion visually (decor, lighting, props)" }] }`;
+Return strict JSON: { "ads": [{ "service": "<one of: ${allowedKeys}>", "occasion": "short label of the seasonal/holiday hook used (e.g. 'Christmas', 'Winter', 'Mother's Day') or 'Evergreen'", "headline": "punchy 4-8 word hook", "body": "2-3 sentence post body that ties to the occasion when relevant", "cta": "short call to action sentence including the phone number", "hashtags": "3-5 relevant hashtags space separated", "imagePrompt": "detailed visual prompt for an eye-catching square ad image (no text in image), South African home context, bright clean aesthetic, reflecting the season/occasion visually (decor, lighting, props)" }] }`;
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -147,7 +152,7 @@ Return strict JSON: { "ads": [{ "service": "<one of: loose-rug | fitted-carpet |
   const data = await res.json();
   const parsed = JSON.parse(data.choices[0].message.content);
   return (parsed.ads || []).map((ad: any) => {
-    const svc = SERVICES.find((s) => s.key === ad.service) || SERVICES[0];
+    const svc = activeServices.find((s) => s.key === ad.service) || activeServices[0];
     return { ...ad, phone: svc.phone, service: svc.name, occasion: ad.occasion || "Evergreen" };
   });
 }
@@ -190,10 +195,14 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { count = 6, theme } = await req.json().catch(() => ({}));
+    const { count = 6, theme, services } = await req.json().catch(() => ({}));
     const safeCount = Math.min(Math.max(Number(count) || 6, 5), 10);
+    const validKeys = SERVICES.map((s) => s.key);
+    const serviceKeys = Array.isArray(services)
+      ? services.filter((k: string) => validKeys.includes(k))
+      : undefined;
 
-    const ads = await generateAdCopy(safeCount, theme);
+    const ads = await generateAdCopy(safeCount, theme, serviceKeys);
 
     // Generate images in parallel
     const withImages = await Promise.all(

@@ -31,12 +31,21 @@ type Ad = {
   phone: string;
 };
 
-async function generateAds(count: number, theme: string): Promise<Ad[]> {
-  const { data, error } = await supabase.functions.invoke("generate-ads", { body: { count, theme } });
+async function generateAds(count: number, theme: string, services: string[]): Promise<Ad[]> {
+  const { data, error } = await supabase.functions.invoke("generate-ads", { body: { count, theme, services } });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data.ads as Ad[];
 }
+
+const SERVICE_OPTIONS = [
+  { key: "home", label: "House Cleaning" },
+  { key: "office", label: "Office Cleaning" },
+  { key: "fitted-carpet", label: "Fitted Carpet" },
+  { key: "loose-rug", label: "Loose Rugs" },
+  { key: "upholstery", label: "Upholstery" },
+  { key: "mattress", label: "Mattresses" },
+];
 
 const THEMES = [
   { value: "auto", label: "Auto (smart pick)" },
@@ -212,16 +221,23 @@ function AdCard({ ad, index }: { ad: Ad; index: number }) {
 function Index() {
   const [count, setCount] = useState(6);
   const [theme, setTheme] = useState<string>("auto");
+  const [services, setServices] = useState<string[]>(SERVICE_OPTIONS.map((s) => s.key));
   const [ads, setAds] = useState<Ad[]>([]);
 
   const mut = useMutation({
-    mutationFn: () => generateAds(count, theme),
+    mutationFn: () => generateAds(count, theme, services),
     onSuccess: (data) => {
       setAds(data);
       toast.success(`Generated ${data.length} fresh ads!`);
     },
     onError: (e: Error) => toast.error(e.message || "Failed to generate ads"),
   });
+
+  const toggleService = (key: string) => {
+    setServices((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -275,7 +291,7 @@ function Index() {
               </div>
               <Button
                 onClick={() => mut.mutate()}
-                disabled={mut.isPending}
+                disabled={mut.isPending || services.length === 0}
                 size="lg"
                 className="font-semibold"
                 style={{ background: "var(--gradient-fresh)", color: "var(--primary-foreground)" }}
@@ -289,6 +305,50 @@ function Index() {
                 )}
               </Button>
               </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Services to feature
+                </p>
+                <div className="flex gap-2 text-xs">
+                  <button
+                    className="text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setServices(SERVICE_OPTIONS.map((s) => s.key))}
+                  >All</button>
+                  <button
+                    className="text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setServices(["home"])}
+                  >House only</button>
+                  <button
+                    className="text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setServices(["fitted-carpet", "loose-rug"])}
+                  >Carpets only</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {SERVICE_OPTIONS.map((s) => {
+                  const active = services.includes(s.key);
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => toggleService(s.key)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                        active
+                          ? "border-transparent text-primary-foreground shadow-sm"
+                          : "border-border bg-background hover:bg-muted text-foreground"
+                      }`}
+                      style={active ? { background: "var(--gradient-fresh)" } : undefined}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {services.length === 0 && (
+                <p className="text-xs text-destructive mt-2">Select at least one service.</p>
+              )}
             </div>
 
             <div>
