@@ -22,6 +22,7 @@ export const Route = createFileRoute("/")({
 
 type Ad = {
   service: string;
+  occasion?: string;
   headline: string;
   body: string;
   cta: string;
@@ -30,12 +31,31 @@ type Ad = {
   phone: string;
 };
 
-async function generateAds(count: number): Promise<Ad[]> {
-  const { data, error } = await supabase.functions.invoke("generate-ads", { body: { count } });
+async function generateAds(count: number, theme: string): Promise<Ad[]> {
+  const { data, error } = await supabase.functions.invoke("generate-ads", { body: { count, theme } });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data.ads as Ad[];
 }
+
+const THEMES = [
+  { value: "auto", label: "Auto (smart pick)" },
+  { value: "Evergreen — no holiday angle", label: "Evergreen" },
+  { value: "Summer", label: "Summer" },
+  { value: "Autumn", label: "Autumn" },
+  { value: "Winter", label: "Winter" },
+  { value: "Spring / Spring cleaning", label: "Spring cleaning" },
+  { value: "Christmas & festive season", label: "Christmas" },
+  { value: "New Year fresh start", label: "New Year" },
+  { value: "Valentine's Day", label: "Valentine's" },
+  { value: "Easter weekend", label: "Easter" },
+  { value: "Mother's Day (SA)", label: "Mother's Day" },
+  { value: "Father's Day (SA)", label: "Father's Day" },
+  { value: "Heritage Day / Braai Day (SA)", label: "Heritage / Braai Day" },
+  { value: "Black Friday", label: "Black Friday" },
+  { value: "Back to school", label: "Back to school" },
+  { value: "Long weekend / public holiday", label: "Long weekend" },
+];
 
 function AdCard({ ad, index }: { ad: Ad; index: number }) {
   const fullPost = `${ad.headline}\n\n${ad.body}\n\n${ad.cta}\n\n${ad.hashtags}`;
@@ -63,6 +83,14 @@ function AdCard({ ad, index }: { ad: Ad; index: number }) {
         <Badge className="absolute top-3 left-3 bg-background/90 text-foreground backdrop-blur border-0">
           {ad.service}
         </Badge>
+        {ad.occasion && ad.occasion !== "Evergreen" && (
+          <Badge
+            className="absolute top-3 right-3 border-0 text-primary-foreground backdrop-blur"
+            style={{ background: "var(--gradient-hero)" }}
+          >
+            {ad.occasion}
+          </Badge>
+        )}
       </div>
       <div className="p-5 space-y-3">
         <h3 className="font-bold text-lg leading-tight" style={{ color: "var(--accent-pink)" }}>
@@ -89,10 +117,11 @@ function AdCard({ ad, index }: { ad: Ad; index: number }) {
 
 function Index() {
   const [count, setCount] = useState(6);
+  const [theme, setTheme] = useState<string>("auto");
   const [ads, setAds] = useState<Ad[]>([]);
 
   const mut = useMutation({
-    mutationFn: () => generateAds(count),
+    mutationFn: () => generateAds(count, theme),
     onSuccess: (data) => {
       setAds(data);
       toast.success(`Generated ${data.length} fresh ads!`);
@@ -130,12 +159,13 @@ function Index() {
       {/* Generator */}
       <section className="max-w-6xl mx-auto px-6 -mt-10 relative z-10">
         <Card className="p-6 md:p-8 shadow-[var(--shadow-elegant)] border-0">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+              <div>
               <h2 className="text-xl font-bold">Generate a fresh batch</h2>
-              <p className="text-sm text-muted-foreground">5–10 unique ads across rugs, carpets, upholstery, mattresses &amp; home cleaning.</p>
-            </div>
-            <div className="flex items-center gap-3 w-full md:w-auto">
+              <p className="text-sm text-muted-foreground">5–10 unique ads — seasonally aware &amp; holiday-ready.</p>
+              </div>
+              <div className="flex items-center gap-3 w-full md:w-auto">
               <div className="flex items-center gap-1 rounded-lg border bg-muted/30 p-1">
                 {[5, 6, 8, 10].map((n) => (
                   <button
@@ -164,6 +194,29 @@ function Index() {
                   <><Sparkles className="w-4 h-4 mr-2" /> Generate ads</>
                 )}
               </Button>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                Seasonal / holiday angle
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => setTheme(t.value)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                      theme === t.value
+                        ? "border-transparent text-primary-foreground shadow-sm"
+                        : "border-border bg-background hover:bg-muted text-foreground"
+                    }`}
+                    style={theme === t.value ? { background: "var(--gradient-hero)" } : undefined}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </Card>
