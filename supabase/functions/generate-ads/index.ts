@@ -190,10 +190,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { count = 6 } = await req.json().catch(() => ({}));
+    const { count = 6, theme } = await req.json().catch(() => ({}));
     const safeCount = Math.min(Math.max(Number(count) || 6, 5), 10);
 
-    const ads = await generateAdCopy(safeCount);
+    const ads = await generateAdCopy(safeCount, theme);
 
     // Generate images in parallel
     const withImages = await Promise.all(
