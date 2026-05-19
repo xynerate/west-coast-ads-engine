@@ -108,7 +108,19 @@ interface AdConcept {
   phone: string;
 }
 
-async function generateAdCopy(count: number, theme?: string, serviceKeys?: string[]): Promise<AdConcept[]> {
+const ANGLES = [
+  { key: "trust", label: "Trust & reputation", brief: "Lean on local reputation, friendly reliable team, years of experience, neighbours-recommended. Calm and reassuring tone." },
+  { key: "urgency", label: "Urgency / limited slots", brief: "Time-sensitive — limited booking slots this week, season filling up fast, book before the weekend. Punchy and action-driving." },
+  { key: "before-after", label: "Before & after / transformation", brief: "Dramatic visual transformation, jaw-dropping results, see the difference. Image must clearly suggest a before/after or stunning 'after' result." },
+  { key: "value", label: "Value / smart spend", brief: "Affordable, great value, saves you a weekend of work, cheaper than replacing the carpet. Practical tone." },
+  { key: "convenience", label: "Convenience / done-for-you", brief: "We collect, clean and return — zero hassle. Free up your weekend. Easygoing, lifestyle tone." },
+  { key: "health", label: "Health & hygiene", brief: "Allergens, dust mites, pet dander, kids crawling on the carpet, healthier home. Caring, family-focused tone." },
+  { key: "social-proof", label: "Social proof / testimonial-style", brief: "Written like a happy neighbour recommending them in the group. Quote-feel, casual, very local." },
+];
+
+const DEFAULT_ANGLES = ANGLES.map((a) => a.key);
+
+async function generateAdCopy(count: number, theme?: string, serviceKeys?: string[], angleKeys?: string[]): Promise<AdConcept[]> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -119,6 +131,12 @@ async function generateAdCopy(count: number, theme?: string, serviceKeys?: strin
     : SERVICES;
   const allowedKeys = activeServices.map((s) => s.key).join(" | ");
 
+  const activeAngles = (angleKeys && angleKeys.length)
+    ? ANGLES.filter((a) => angleKeys.includes(a.key))
+    : ANGLES;
+  const allowedAngleKeys = activeAngles.map((a) => a.key).join(" | ");
+  const angleBriefs = activeAngles.map((a) => `- ${a.key} (${a.label}): ${a.brief}`).join("\n");
+
   const prompt = `You are a Facebook group marketing copywriter for "West Coast Cleaners" — a friendly, local home & rug cleaning company on the West Coast of Cape Town, South Africa (Blouberg area).
 
 TIMING & SEASONAL CONTEXT (use this to make ads feel timely and relevant):
@@ -126,11 +144,20 @@ ${context}
 
 Their services (ONLY use these — do not invent others): ${activeServices.map((s) => `${s.name} [key: ${s.key}] (${s.perk}, call ${s.phone})`).join("; ")}.
 
+CREATIVE ANGLES — each ad must commit to ONE of these angles and let it shape both the copy and the image:
+${angleBriefs}
+
 Tone: warm, neighbourly, locally proud, casual South African. NOT salesy. Feels like a community recommendation, not a corporate ad. Use light emojis sparingly (1-2 per ad). Tie copy AND imagery to the seasonal/holiday context above where it feels natural — never forced.
 
-Generate ${count} DIFFERENT short, catchy Facebook group ads. Each ad MUST target ONE of the allowed services listed above and feel native to local community groups (Blouberg, Table View, Melkbosstrand, Parklands, West Coast Moms etc). Vary across the allowed services as evenly as possible.
+Generate ${count} DIFFERENT short, catchy Facebook group ads. Each ad MUST target ONE of the allowed services listed above AND commit to ONE of the allowed angles, and feel native to local community groups (Blouberg, Table View, Melkbosstrand, Parklands, West Coast Moms etc).
 
-Return strict JSON: { "ads": [{ "service": "<one of: ${allowedKeys}>", "occasion": "short label of the seasonal/holiday hook used (e.g. 'Christmas', 'Winter', 'Mother's Day') or 'Evergreen'", "headline": "punchy 4-8 word hook", "body": "2-3 sentence post body that ties to the occasion when relevant", "cta": "short call to action sentence including the phone number", "hashtags": "3-5 relevant hashtags space separated", "imagePrompt": "detailed visual prompt for an eye-catching square ad image (no text in image), South African home context, bright clean aesthetic, reflecting the season/occasion visually (decor, lighting, props)" }] }`;
+VARIETY RULES (very important):
+- Spread across the allowed services as evenly as possible.
+- Spread across the allowed angles as evenly as possible — produce multiple variants per service using DIFFERENT angles.
+- No two ads should share the same (service, angle) pair unless unavoidable.
+- Headlines, hooks, and image prompts must feel clearly distinct between variants of the same service.
+
+Return strict JSON: { "ads": [{ "service": "<one of: ${allowedKeys}>", "angle": "<one of: ${allowedAngleKeys}>", "occasion": "short label of the seasonal/holiday hook used (e.g. 'Christmas', 'Winter', 'Mother's Day') or 'Evergreen'", "headline": "punchy 4-8 word hook that reflects the chosen angle", "body": "2-3 sentence post body in the voice of the chosen angle, tied to the occasion when relevant", "cta": "short call to action sentence including the phone number", "hashtags": "3-5 relevant hashtags space separated", "imagePrompt": "detailed visual prompt for an eye-capturing square ad image (no text in image), South African home context, bright clean aesthetic, reflecting BOTH the chosen angle (e.g. clear before/after split for before-after, gleaming spotless result for trust, calendar/clock cue for urgency, happy family for health) AND the season/occasion visually" }] }`;
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -153,7 +180,15 @@ Return strict JSON: { "ads": [{ "service": "<one of: ${allowedKeys}>", "occasion
   const parsed = JSON.parse(data.choices[0].message.content);
   return (parsed.ads || []).map((ad: any) => {
     const svc = activeServices.find((s) => s.key === ad.service) || activeServices[0];
-    return { ...ad, phone: svc.phone, service: svc.name, occasion: ad.occasion || "Evergreen" };
+    const ang = activeAngles.find((a) => a.key === ad.angle);
+    return {
+      ...ad,
+      phone: svc.phone,
+      service: svc.name,
+      occasion: ad.occasion || "Evergreen",
+      angle: ang?.key || activeAngles[0].key,
+      angleLabel: ang?.label || activeAngles[0].label,
+    };
   });
 }
 
@@ -195,14 +230,18 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { count = 6, theme, services } = await req.json().catch(() => ({}));
+    const { count = 6, theme, services, angles } = await req.json().catch(() => ({}));
     const safeCount = Math.min(Math.max(Number(count) || 6, 5), 10);
     const validKeys = SERVICES.map((s) => s.key);
     const serviceKeys = Array.isArray(services)
       ? services.filter((k: string) => validKeys.includes(k))
       : undefined;
+    const validAngleKeys = ANGLES.map((a) => a.key);
+    const angleKeys = Array.isArray(angles)
+      ? angles.filter((k: string) => validAngleKeys.includes(k))
+      : undefined;
 
-    const ads = await generateAdCopy(safeCount, theme, serviceKeys);
+    const ads = await generateAdCopy(safeCount, theme, serviceKeys, angleKeys);
 
     // Generate images in parallel
     const withImages = await Promise.all(

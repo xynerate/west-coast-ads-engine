@@ -23,6 +23,8 @@ export const Route = createFileRoute("/")({
 type Ad = {
   service: string;
   occasion?: string;
+  angle?: string;
+  angleLabel?: string;
   headline: string;
   body: string;
   cta: string;
@@ -31,8 +33,8 @@ type Ad = {
   phone: string;
 };
 
-async function generateAds(count: number, theme: string, services: string[]): Promise<Ad[]> {
-  const { data, error } = await supabase.functions.invoke("generate-ads", { body: { count, theme, services } });
+async function generateAds(count: number, theme: string, services: string[], angles: string[]): Promise<Ad[]> {
+  const { data, error } = await supabase.functions.invoke("generate-ads", { body: { count, theme, services, angles } });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data.ads as Ad[];
@@ -45,6 +47,16 @@ const SERVICE_OPTIONS = [
   { key: "loose-rug", label: "Loose Rugs" },
   { key: "upholstery", label: "Upholstery" },
   { key: "mattress", label: "Mattresses" },
+];
+
+const ANGLE_OPTIONS = [
+  { key: "trust", label: "Trust" },
+  { key: "urgency", label: "Urgency" },
+  { key: "before-after", label: "Before / After" },
+  { key: "value", label: "Value" },
+  { key: "convenience", label: "Convenience" },
+  { key: "health", label: "Health" },
+  { key: "social-proof", label: "Social proof" },
 ];
 
 const THEMES = [
@@ -186,6 +198,11 @@ function AdCard({ ad, index }: { ad: Ad; index: number }) {
         <Badge className="absolute top-3 left-3 bg-background/90 text-foreground backdrop-blur border-0">
           {ad.service}
         </Badge>
+        {ad.angleLabel && (
+          <Badge className="absolute bottom-3 left-3 bg-foreground/85 text-background backdrop-blur border-0">
+            {ad.angleLabel}
+          </Badge>
+        )}
         {ad.occasion && ad.occasion !== "Evergreen" && (
           <Badge
             className="absolute top-3 right-3 border-0 text-primary-foreground backdrop-blur"
@@ -222,10 +239,11 @@ function Index() {
   const [count, setCount] = useState(6);
   const [theme, setTheme] = useState<string>("auto");
   const [services, setServices] = useState<string[]>(SERVICE_OPTIONS.map((s) => s.key));
+  const [angles, setAngles] = useState<string[]>(ANGLE_OPTIONS.map((a) => a.key));
   const [ads, setAds] = useState<Ad[]>([]);
 
   const mut = useMutation({
-    mutationFn: () => generateAds(count, theme, services),
+    mutationFn: () => generateAds(count, theme, services, angles),
     onSuccess: (data) => {
       setAds(data);
       toast.success(`Generated ${data.length} fresh ads!`);
@@ -235,6 +253,12 @@ function Index() {
 
   const toggleService = (key: string) => {
     setServices((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const toggleAngle = (key: string) => {
+    setAngles((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
   };
@@ -291,7 +315,7 @@ function Index() {
               </div>
               <Button
                 onClick={() => mut.mutate()}
-                disabled={mut.isPending || services.length === 0}
+                disabled={mut.isPending || services.length === 0 || angles.length === 0}
                 size="lg"
                 className="font-semibold"
                 style={{ background: "var(--gradient-fresh)", color: "var(--primary-foreground)" }}
@@ -352,6 +376,44 @@ function Index() {
             </div>
 
             <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Ad angles / variants
+                </p>
+                <div className="flex gap-2 text-xs">
+                  <button
+                    className="text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setAngles(ANGLE_OPTIONS.map((a) => a.key))}
+                  >All</button>
+                  <button
+                    className="text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setAngles(["trust", "urgency", "before-after"])}
+                  >Core 3</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-5">
+                {ANGLE_OPTIONS.map((a) => {
+                  const active = angles.includes(a.key);
+                  return (
+                    <button
+                      key={a.key}
+                      onClick={() => toggleAngle(a.key)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                        active
+                          ? "border-transparent text-primary-foreground shadow-sm"
+                          : "border-border bg-background hover:bg-muted text-foreground"
+                      }`}
+                      style={active ? { background: "var(--gradient-fresh)" } : undefined}
+                    >
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {angles.length === 0 && (
+                <p className="text-xs text-destructive mb-2">Select at least one angle.</p>
+              )}
+
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
                 Seasonal / holiday angle
               </p>
