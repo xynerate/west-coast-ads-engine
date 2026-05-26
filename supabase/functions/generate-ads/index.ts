@@ -244,7 +244,39 @@ type AiImageResult = {
   cacheStatus: "fresh" | "cached" | "uncached";
   usedCount?: number;
   createdAt?: string;
+  cacheId?: string;
 };
+
+type CacheRow = {
+  id: string;
+  public_url: string;
+  used_count: number | null;
+  created_at: string;
+  upvotes: number;
+  downvotes: number;
+};
+
+function isCacheEligible(row: { upvotes: number; downvotes: number }): boolean {
+  const down = Number(row.downvotes ?? 0);
+  const up = Number(row.upvotes ?? 0);
+  if (down >= 3 && down > up) return false;
+  return true;
+}
+
+function pickWeightedCacheRow(rows: CacheRow[]): CacheRow | null {
+  const eligible = rows.filter(isCacheEligible);
+  if (!eligible.length) return null;
+  const sorted = [...eligible].sort((a, b) => {
+    const scoreA = Number(a.upvotes ?? 0) - Number(a.downvotes ?? 0);
+    const scoreB = Number(b.upvotes ?? 0) - Number(b.downvotes ?? 0);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    const usedA = Number(a.used_count ?? 0);
+    const usedB = Number(b.used_count ?? 0);
+    return usedA - usedB;
+  });
+  const topHalf = sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 2)));
+  return topHalf[Math.floor(Math.random() * topHalf.length)] ?? null;
+}
 
 type CopyLibraryRow = {
   service_key: string;
@@ -319,25 +351,59 @@ async function pickCachedAiImage(
   client: ServiceClient,
   serviceKey: string,
   theme: string | null,
+  finalPrompt: string,
 ): Promise<AiImageResult | null> {
-  const tryQuery = async (matchTheme: boolean) => {
+  const promptHash = await sha256Hex(`${serviceKey}|${theme ?? ""}|${finalPrompt}`);
+  const selectCols = "id, public_url, used_count, created_at, upvotes, downvotes";
+
+  const useCachedRow = async (row: CacheRow): Promise<AiImageResult> => {
+    const usedCount = Number(row.used_count ?? 0) + 1;
+    const { error: updateErr } = await client
+      .from(CACHE_TABLE)
+      .update({ used_count: usedCount, last_used_at: new Date().toISOString() })
+      .eq("id", row.id);
+    if (updateErr) {
+      console.warn("[ai-image-cache] usage update failed:", updateErr.message);
+    }
+    return {
+      url: row.public_url,
+      cacheStatus: "cached",
+      usedCount,
+      createdAt: row.created_at,
+      cacheId: row.id,
+    };
+  };
+
+  const { data: exact, error: exactErr } = await client
+    .from(CACHE_TABLE)
+    .select(selectCols)
+    .eq("prompt_hash", promptHash)
+    .limit(1)
+    .maybeSingle();
+  if (exactErr) {
+    console.warn("[ai-image-cache] exact prompt lookup failed:", exactErr.message);
+  } else if (exact && isCacheEligible(exact as CacheRow)) {
+    return useCachedRow(exact as CacheRow);
+  }
+
+  const tryServiceQuery = async (matchTheme: boolean) => {
     let q = client
       .from(CACHE_TABLE)
-      .select("id, public_url, used_count, created_at")
+      .select(selectCols)
       .eq("service_key", serviceKey)
       .order("last_used_at", { ascending: true, nullsFirst: true })
-      .limit(20);
+      .limit(30);
     if (matchTheme && theme) q = q.eq("theme", theme);
     return q;
   };
 
-  let { data, error } = await tryQuery(true);
+  let { data, error } = await tryServiceQuery(true);
   if (error) {
     console.warn("[ai-image-cache] lookup (theme) failed:", error.message);
     return null;
   }
   if (!data?.length) {
-    const fallback = await tryQuery(false);
+    const fallback = await tryServiceQuery(false);
     if (fallback.error) {
       console.warn("[ai-image-cache] lookup (any) failed:", fallback.error.message);
       return null;
@@ -346,24 +412,9 @@ async function pickCachedAiImage(
   }
   if (!data?.length) return null;
 
-  const topHalf = data.slice(0, Math.max(1, Math.ceil(data.length / 2)));
-  const pick = topHalf[Math.floor(Math.random() * topHalf.length)];
-  const usedCount = Number(pick.used_count ?? 0) + 1;
-
-  const { error: updateErr } = await client
-    .from(CACHE_TABLE)
-    .update({ used_count: usedCount, last_used_at: new Date().toISOString() })
-    .eq("id", pick.id);
-  if (updateErr) {
-    console.warn("[ai-image-cache] usage update failed:", updateErr.message);
-  }
-
-  return {
-    url: pick.public_url as string,
-    cacheStatus: "cached",
-    usedCount,
-    createdAt: pick.created_at as string | undefined,
-  };
+  const pick = pickWeightedCacheRow(data as CacheRow[]);
+  if (!pick) return null;
+  return useCachedRow(pick);
 }
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -410,7 +461,7 @@ async function storeAiImage(
       public_url: publicUrl,
       used_count: 1,
       last_used_at: new Date().toISOString(),
-    }).select("used_count, created_at").single();
+    }).select("id, used_count, created_at").single();
     if (insErr) {
       console.warn("[ai-image-cache] metadata insert failed:", insErr.message);
     }
@@ -419,6 +470,7 @@ async function storeAiImage(
       cacheStatus: "fresh",
       usedCount: Number(inserted?.used_count ?? 1),
       createdAt: inserted?.created_at as string | undefined,
+      cacheId: inserted?.id as string | undefined,
     };
   } catch (e) {
     console.warn("[ai-image-cache] storeAiImage error:", (e as Error).message);
@@ -437,7 +489,7 @@ async function geminiImage(
   const cache = getServiceClient();
 
   if (cache && !forceFresh) {
-    const hit = await pickCachedAiImage(cache, serviceKey, theme);
+    const hit = await pickCachedAiImage(cache, serviceKey, theme, finalPrompt);
     if (hit) return hit;
   }
 
@@ -843,6 +895,96 @@ Return strict JSON: { "ads": [{ "service": "<${serviceKeysForPrompt}>", "angle":
   return ads;
 }
 
+const FEEDBACK_TABLE = "ad_image_feedback";
+
+async function rateAdImage(
+  client: ServiceClient,
+  email: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const vote = body.vote === "up" || body.vote === "down" ? body.vote : null;
+  const serviceKey = typeof body.serviceKey === "string" ? body.serviceKey.trim() : "";
+  const cacheId = typeof body.cacheId === "string" ? body.cacheId.trim() : null;
+  const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : null;
+  const headline = typeof body.headline === "string" ? body.headline.trim().slice(0, 500) : null;
+  const adBody = typeof body.body === "string" ? body.body.trim().slice(0, 2000) : null;
+
+  if (!vote) {
+    return jsonResponse({ error: "vote must be 'up' or 'down'" }, 400);
+  }
+  if (!SERVICES.some((s) => s.key === serviceKey)) {
+    return jsonResponse({ error: "Invalid serviceKey" }, 400);
+  }
+
+  const { error: feedbackErr } = await client.from(FEEDBACK_TABLE).insert({
+    cache_id: cacheId || null,
+    image_url: imageUrl || null,
+    service_key: serviceKey,
+    vote,
+    headline,
+    body: adBody,
+    author_email: email,
+  });
+  if (feedbackErr) {
+    console.error("[rate-image] feedback insert failed:", feedbackErr.message);
+    return jsonResponse({ error: "Could not save feedback" }, 500);
+  }
+
+  if (cacheId) {
+    const { data: row, error: readErr } = await client
+      .from(CACHE_TABLE)
+      .select("upvotes, downvotes")
+      .eq("id", cacheId)
+      .maybeSingle();
+    if (!readErr && row) {
+      const upvotes = Number(row.upvotes ?? 0) + (vote === "up" ? 1 : 0);
+      const downvotes = Number(row.downvotes ?? 0) + (vote === "down" ? 1 : 0);
+      const { error: updateErr } = await client
+        .from(CACHE_TABLE)
+        .update({ upvotes, downvotes })
+        .eq("id", cacheId);
+      if (updateErr) {
+        console.warn("[rate-image] cache score update failed:", updateErr.message);
+      }
+    }
+  }
+
+  return jsonResponse({ ok: true, vote }, 200);
+}
+
+async function regenerateAdImage(body: Record<string, unknown>): Promise<Response> {
+  const serviceKey = typeof body.serviceKey === "string" ? body.serviceKey.trim() : "";
+  const imagePrompt = typeof body.imagePrompt === "string" ? body.imagePrompt.trim() : "";
+  const themeRaw = typeof body.theme === "string" ? body.theme : undefined;
+  const themeForCache = themeRaw && themeRaw !== "auto" ? themeRaw : null;
+  const copyTemperature = normalizeCopyTemperature(body.copyTemperature);
+
+  if (!SERVICES.some((s) => s.key === serviceKey)) {
+    return jsonResponse({ error: "Invalid serviceKey" }, 400);
+  }
+  if (!imagePrompt) {
+    return jsonResponse({ error: "imagePrompt is required" }, 400);
+  }
+
+  const image = await geminiImage(serviceKey, imagePrompt, themeForCache, true, copyTemperature);
+  if (!image?.url) {
+    return jsonResponse({ error: "Could not generate a new image" }, 502);
+  }
+
+  return jsonResponse(
+    {
+      imageUrl: image.url,
+      imageCache: {
+        status: image.cacheStatus,
+        usedCount: image.usedCount,
+        createdAt: image.createdAt,
+        cacheId: image.cacheId,
+      },
+    },
+    200,
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -851,6 +993,18 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
+    const mode = typeof body.mode === "string" ? body.mode : null;
+
+    if (mode === "rate-image") {
+      const client = getServiceClient();
+      if (!client) return jsonResponse({ error: "Feedback storage not configured" }, 500);
+      return await rateAdImage(client, auth.email, body);
+    }
+
+    if (mode === "regenerate-image") {
+      return await regenerateAdImage(body);
+    }
+
     const {
       count = 6,
       theme,
@@ -973,6 +1127,7 @@ Deno.serve(async (req) => {
                 status: image.cacheStatus,
                 usedCount: image.usedCount,
                 createdAt: image.createdAt,
+                cacheId: image.cacheId,
               }
             : undefined,
         };

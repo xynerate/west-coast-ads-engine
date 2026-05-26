@@ -59,7 +59,7 @@ Office, or Any (mix of services). When you pick one service, the tool uses match
 uploaded photos where possible and writes copy for that service only.
 
 
-Copy temperature
+Copy temperature (Front end only , still under development - will not work yet)
 ----------------
 What: Controls how formal, funny, or "campaign-like" the wording and AI image mood feel.
 How:
@@ -105,6 +105,21 @@ When you save changes, your improved wording can be stored in a copy library so
 future batches learn from lines you liked (especially per service).
 
 
+Image match feedback
+--------------------
+What: Tell the tool whether the picture fits the words on each ad.
+How: On every ad card, use "Does the image match this ad?" — Yes (thumbs up) or
+No (thumbs down).
+  - Yes: the image is saved as a good example for that service; similar images
+    are favoured in future batches.
+  - No on an AI image: a fresh image is generated automatically to better match
+    the copy. You can also click "Regenerate image" anytime on AI ads.
+  - No on your own photo: edit the copy so it describes what's actually in the
+    picture (the photo stays; copy edits still feed the copy library).
+
+For copy fixes, keep using "Edit copy" — that is the best way to teach wording.
+
+
 Download post
 -------------
 What: Builds one square PNG with your image, headline, body, CTA, and branding —
@@ -126,7 +141,10 @@ Quick workflow (recommended)
 2. Upload a few fresh job photos (tag the correct service).
 3. Set copy temperature and seasonal theme if you want something specific.
 4. Choose batch size and service focus, then Generate ads.
-5. Edit any lines you want to tweak, then Download post for each one you will use.
-6. Post to your Facebook groups.
+5. Rate image match (Yes/No) and edit any lines you want to tweak.
+6. Download post for each one you will use.
+7. Post to your Facebook groups.
 
-For questions about access or technical setup, contact your developer / admin.
+:)
+
+Rik
