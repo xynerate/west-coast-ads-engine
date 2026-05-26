@@ -72,14 +72,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "West Coast Cleaners — Facebook Ad Engine" },
+      { name: "description", content: "Generate ready-to-post Facebook group ads for West Coast Cleaners." },
+      { property: "og:title", content: "West Coast Cleaners — Facebook Ad Engine" },
+      { property: "og:description", content: "Generate ready-to-post Facebook group ads for West Coast Cleaners." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
