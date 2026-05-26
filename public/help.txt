@@ -1,0 +1,132 @@
+WEST COAST CLEANERS — FACEBOOK AD ENGINE
+Help guide for clients
+==========================================
+
+This tool creates ready-to-post Facebook group ads for West Coast Cleaners:
+short copy (headline, body, call-to-action, hashtags) plus a square image you can
+download and upload to community groups (Blouberg, Table View, Melkbosstrand, etc.).
+
+Sign in
+-------
+What: Sign in with your approved Google account.
+How: Click "Sign in with Google" on the first screen. Only allow-listed team emails
+can use the app. If you see "Access not approved", your email is not on the list yet.
+
+
+Generate a fresh batch
+----------------------
+What: Creates a new set of ads in one go.
+How:
+  1. Choose how many ads (5, 6, 8, or 10).
+  2. Set the options below (photos, service, temperature, theme).
+  3. Click "Generate ads" (or "Generate again" for a new batch).
+While it runs, placeholder cards show until the results appear below.
+
+
+Your photos
+-----------
+What: Add your own job photos so the AI writes copy that matches real work and can
+use those images in ads.
+How:
+  1. Pick a photo file (JPEG, PNG, WebP, or GIF).
+  2. Choose which service the photo belongs to (rug, carpet, upholstery, etc.).
+  3. Click "Upload photo".
+Uploaded photos are stored in your account and mixed into the next generation.
+Photos you upload just before generating are prioritised to appear in that batch.
+
+
+Uploads only (test)
+-------------------
+What: Test mode — every ad uses only your uploaded photos (no AI-made images).
+How: Tick "Uploads only (test)". You need at least one upload. The batch size is
+limited to how many photos you have (up to 10). "Focus on a service" is disabled;
+the service comes from how each photo was tagged when uploaded.
+
+
+Force fresh AI images
+---------------------
+What: When an ad needs an AI image, always create a brand-new one instead of reusing
+a saved image from the cache.
+How: Tick "Force fresh AI images". Uses more AI quota but gives new visuals. New
+images are still saved for possible reuse later. Not available in uploads-only mode.
+
+
+Focus on a service
+------------------
+What: All ads in the batch promote one cleaning service (e.g. only upholstery).
+How: Tap a service chip: Loose rug, Fitted carpet, Upholstery, Mattress, Home,
+Office, or Any (mix of services). When you pick one service, the tool uses matching
+uploaded photos where possible and writes copy for that service only.
+
+
+Copy temperature
+----------------
+What: Controls how formal, funny, or "campaign-like" the wording and AI image mood feel.
+How:
+  - Use presets: Humorous, Neutral, or Campaign manager, or drag the slider (0–100).
+  - Low (0–33): witty, playful local tone; AI images slightly more upbeat.
+  - Middle (34–66): warm neighbourly posts like your usual Facebook style (default).
+  - High (67–100): polished ad-manager tone; more professional images.
+Copy temperature affects AI-generated images only. Your own uploaded photos are unchanged.
+
+
+Seasonal / holiday angle
+------------------------
+What: Steers the message toward a time of year or occasion.
+How: Pick a theme chip, or leave "Auto" so the tool picks from the calendar
+(upcoming holidays, current season in Cape Town). Examples: Summer, Christmas,
+Mother's Day, Heritage Day, Back to school, Evergreen (no holiday angle).
+Seasonal themes change the words, not outdoor/beach pictures — images stay on-brand
+cleaning scenes indoors.
+
+
+Understanding each generated ad
+-------------------------------
+Each card shows:
+  - Service badge (which offering the ad is for).
+  - Image: "Your photo", "Before & after", or "AI image".
+  - "Fresh AI" or "Cached · used Nx" — whether the AI picture is new or reused
+    from storage (saves cost and keeps consistency).
+  - Occasion badge when the copy ties to a holiday or season.
+  - Headline, body, call-to-action (with phone), and hashtags.
+
+The AI is trained on your real past posts and brand notes so new ads sound like
+West Coast Cleaners, not generic marketing — unless you set a high copy temperature.
+
+
+Edit copy
+---------
+What: Fix wording before you post to Facebook.
+How: Click "Edit copy" on a card. Change headline, body, CTA, or hashtags, then
+Save. "Reset to original" undoes your edits back to what the AI first generated.
+An "Edited" badge appears when you changed anything.
+
+When you save changes, your improved wording can be stored in a copy library so
+future batches learn from lines you liked (especially per service).
+
+
+Download post
+-------------
+What: Builds one square PNG with your image, headline, body, CTA, and branding —
+ready to upload as a single image post to a Facebook group.
+How: Click "Download post" on a card (you need an image; finish editing first).
+The file downloads to your device; upload it to the group like any other photo post.
+You can still copy/paste the text separately if you prefer a text-only post.
+
+
+Sign out
+--------
+What: Ends your session on this device.
+How: Use "Sign out" at the top right.
+
+
+Quick workflow (recommended)
+----------------------------
+1. Sign in.
+2. Upload a few fresh job photos (tag the correct service).
+3. Set copy temperature and seasonal theme if you want something specific.
+4. Choose batch size and service focus, then Generate ads.
+5. Edit any lines you want to tweak, then Download post for each one you will use.
+6. Post to your Facebook groups.
+
+For questions about access or technical setup, contact your developer / admin.
