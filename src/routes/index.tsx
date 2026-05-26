@@ -23,6 +23,9 @@ import {
   RotateCcw,
   Check,
   X,
+  ThumbsUp,
+  ThumbsDown,
+  ImagePlus,
 } from "lucide-react";
 import heroImg from "@/assets/hero.jpg";
 import { resolveCustomImageCatalog } from "@/data/custom-ad-images";
@@ -68,13 +71,16 @@ type Ad = AdCopySnapshot & {
   angle?: string;
   angleLabel?: string;
   imageUrl: string | null;
+  imagePrompt?: string;
   imageSource?: "custom" | "ai";
   imageMeta?: { type: string; tags: string[]; subject: string };
   imageCache?: {
     status: "fresh" | "cached" | "uncached";
     usedCount?: number;
     createdAt?: string;
+    cacheId?: string;
   };
+  imageMatchVote?: "up" | "down" | null;
   phone: string;
   __edited?: boolean;
   __original?: AdCopySnapshot;
@@ -193,6 +199,52 @@ async function saveEditedCopyToLibrary(
   if (error) throw error;
 }
 
+async function rateAdImageMatch(
+  ad: Ad,
+  vote: "up" | "down",
+): Promise<void> {
+  const { error } = await supabase.functions.invoke("generate-ads", {
+    body: {
+      mode: "rate-image",
+      vote,
+      serviceKey: ad.serviceKey,
+      cacheId: ad.imageCache?.cacheId ?? null,
+      imageUrl: ad.imageUrl,
+      headline: ad.headline,
+      body: ad.body,
+    },
+  });
+  if (error instanceof FunctionsHttpError) {
+    const body = (await error.context.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? error.message);
+  }
+  if (error) throw error;
+}
+
+async function regenerateAdImage(
+  ad: Ad,
+  theme: string,
+  copyTemperature: number,
+): Promise<{ imageUrl: string; imageCache: Ad["imageCache"] }> {
+  const { data, error } = await supabase.functions.invoke("generate-ads", {
+    body: {
+      mode: "regenerate-image",
+      serviceKey: ad.serviceKey,
+      imagePrompt: ad.imagePrompt ?? "",
+      theme,
+      copyTemperature: clampCopyTemperature(copyTemperature),
+    },
+  });
+  if (error instanceof FunctionsHttpError) {
+    const body = (await error.context.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? error.message);
+  }
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  if (!data?.imageUrl) throw new Error("No image returned");
+  return { imageUrl: data.imageUrl as string, imageCache: data.imageCache as Ad["imageCache"] };
+}
+
 const SERVICE_OPTIONS = [
   { value: "any", label: "Any" },
   { value: "loose-rug", label: "Loose rug" },
@@ -255,14 +307,21 @@ function AdCard({
   ad,
   index,
   onSaveCopy,
+  onRateMatch,
+  onRegenerateImage,
+  regenerating,
 }: {
   ad: Ad;
   index: number;
   onSaveCopy: (index: number, copy: AdCopySnapshot) => void;
+  onRateMatch: (index: number, vote: "up" | "down") => void;
+  onRegenerateImage: (index: number) => void;
+  regenerating: boolean;
 }) {
   const [exporting, setExporting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<AdCopySnapshot>(() => copySnapshot(ad));
+  const [rating, setRating] = useState(false);
 
   const original = ad.__original ?? copySnapshot(ad);
   const draftDiffersFromOriginal = !copyEquals(draft, original);
@@ -307,6 +366,19 @@ function AdCard({
       setExporting(false);
     }
   };
+
+  const handleRate = async (vote: "up" | "down") => {
+    if (rating || ad.imageMatchVote) return;
+    setRating(true);
+    try {
+      await onRateMatch(index, vote);
+    } finally {
+      setRating(false);
+    }
+  };
+
+  const canRegenerate =
+    ad.imageSource === "ai" && Boolean(ad.imagePrompt?.trim()) && !isEditing && !regenerating;
 
   return (
     <Card className="overflow-hidden border-0 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-elegant)] transition-all hover:-translate-y-1">
@@ -447,10 +519,63 @@ function AdCard({
             <p className="text-xs text-muted-foreground">{ad.hashtags}</p>
           </>
         )}
-        <div className="flex flex-col gap-2 pt-2 sm:flex-row">
+        {!isEditing && (
+          <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 space-y-2">
+            <p className="text-xs font-medium text-foreground/80">Does the image match this ad?</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={ad.imageMatchVote === "up" ? "default" : "outline"}
+                className="h-8"
+                disabled={rating || Boolean(ad.imageMatchVote)}
+                onClick={() => handleRate("up")}
+              >
+                <ThumbsUp className="w-3.5 h-3.5 mr-1.5" />
+                Yes
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={ad.imageMatchVote === "down" ? "destructive" : "outline"}
+                className="h-8"
+                disabled={rating || Boolean(ad.imageMatchVote)}
+                onClick={() => handleRate("down")}
+              >
+                <ThumbsDown className="w-3.5 h-3.5 mr-1.5" />
+                No
+              </Button>
+              {ad.imageMatchVote === "up" && (
+                <span className="text-xs text-muted-foreground">Thanks — we&apos;ll reuse similar images.</span>
+              )}
+              {ad.imageMatchVote === "down" && ad.imageSource === "ai" && (
+                <span className="text-xs text-muted-foreground">Generating a better match…</span>
+              )}
+              {ad.imageMatchVote === "down" && ad.imageSource !== "ai" && (
+                <span className="text-xs text-muted-foreground">Try editing the copy to match the photo.</span>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
           {!isEditing && (
             <Button onClick={startEdit} size="sm" variant="outline" className="w-full sm:flex-1">
               <Pencil className="w-4 h-4 mr-2" /> Edit copy
+            </Button>
+          )}
+          {canRegenerate && (
+            <Button
+              onClick={() => onRegenerateImage(index)}
+              size="sm"
+              variant="outline"
+              className="w-full sm:flex-1"
+              disabled={regenerating}
+            >
+              {regenerating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> New image…</>
+              ) : (
+                <><ImagePlus className="w-4 h-4 mr-2" /> Regenerate image</>
+              )}
             </Button>
           )}
           <Button
@@ -580,6 +705,7 @@ function AuthedApp({ email }: { email: string | null }) {
   const [ads, setAds] = useState<Ad[]>([]);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<number | null>(null);
   const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
 
   const uploadsQuery = useQuery({
     queryKey: ["user-uploads"],
@@ -631,6 +757,63 @@ function AuthedApp({ email }: { email: string | null }) {
         const message = e instanceof Error ? e.message : "Could not add edit to the copy library";
         toast.warning(`Copy saved locally, but not added to library: ${message}`);
       });
+    }
+  };
+
+  const handleRegenerateImage = async (index: number, options?: { silent?: boolean }) => {
+    const ad = ads[index];
+    if (!ad?.imagePrompt?.trim() || ad.imageSource !== "ai") return;
+
+    setRegeneratingIndex(index);
+    try {
+      const { imageUrl, imageCache } = await regenerateAdImage(ad, theme, copyTemperature);
+      setAds((prev) =>
+        prev.map((item, i) =>
+          i === index
+            ? {
+                ...item,
+                imageUrl,
+                imageCache,
+                imageMatchVote: null,
+              }
+            : item,
+        ),
+      );
+      if (!options?.silent) {
+        toast.success("New AI image ready");
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not regenerate image";
+      toast.error(message);
+    } finally {
+      setRegeneratingIndex(null);
+    }
+  };
+
+  const handleRateMatch = async (index: number, vote: "up" | "down") => {
+    const ad = ads[index];
+    if (!ad) return;
+
+    setAds((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, imageMatchVote: vote } : item)),
+    );
+
+    try {
+      await rateAdImageMatch(ad, vote);
+      if (vote === "up") {
+        toast.success("Thanks — we'll favour similar images.");
+      } else if (ad.imageSource === "ai" && ad.imagePrompt?.trim()) {
+        await handleRegenerateImage(index, { silent: true });
+        toast.success("Generating a new image that better matches the copy.");
+      } else {
+        toast.message("Tip: edit the copy so it describes what's in the photo.");
+      }
+    } catch (e) {
+      setAds((prev) =>
+        prev.map((item, i) => (i === index ? { ...item, imageMatchVote: null } : item)),
+      );
+      const message = e instanceof Error ? e.message : "Could not save feedback";
+      toast.error(message);
     }
   };
 
@@ -937,7 +1120,15 @@ function AuthedApp({ email }: { email: string | null }) {
         {ads.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
             {ads.map((ad, i) => (
-              <AdCard key={i} ad={ad} index={i} onSaveCopy={handleAdSaveCopy} />
+              <AdCard
+                key={i}
+                ad={ad}
+                index={i}
+                onSaveCopy={handleAdSaveCopy}
+                onRateMatch={handleRateMatch}
+                onRegenerateImage={handleRegenerateImage}
+                regenerating={regeneratingIndex === i}
+              />
             ))}
           </div>
         )}
