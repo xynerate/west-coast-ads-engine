@@ -9,6 +9,7 @@
 -- the database layer in case another auth method is enabled later.
 
 drop policy if exists "Authenticated read user-ad-images" on storage.objects;
+drop policy if exists "Allowlisted read user-ad-images" on storage.objects;
 
 create policy "Allowlisted read user-ad-images"
   on storage.objects for select
